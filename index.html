@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random JSON Display</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="wrapper">
+        <div class="control-group">
+            <select id="folderSelect" onchange="loadFileList()">
+                <!-- Folders will be populated here -->
+            </select>
+            <select id="fileSelect" onchange="fetchFileContent()">
+                <!-- Files will be populated here -->
+            </select>
+            <label for="maxLength">Max Text Length:</label>
+            <input type="number" id="maxLength" placeholder="e.g., 250" min="0">
+            <button onclick="fetchRandomFile(parseInt(document.getElementById('maxLength').value) || Infinity)">Show Random JSON</button>
+        </div>
+        <div id="content">Select a folder and file to display JSON content.</div>
+        <!--<div id="info"></div>-->
+    </div>
+
+    <script>
+        const folders = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
+
+        // Populate folder dropdown
+        function populateFolderDropdown() {
+            const folderSelect = document.getElementById('folderSelect');
+            folders.forEach(folder => {
+                const option = document.createElement('option');
+                option.value = folder;
+                option.textContent = `Folder ${folder}`;
+                folderSelect.appendChild(option);
+            });
+            // Set default folder to the first one
+            if (folders.length > 0) {
+                folderSelect.value = folders[0];
+                loadFileList(); // Load files for the default folder
+            }
+        }
+
+        async function loadFileList() {
+            const folder = document.getElementById('folderSelect').value;
+            const fileSelect = document.getElementById('fileSelect');
+            fileSelect.innerHTML = '<option>Loading files...</option>'; // Initial loading message
+
+            try {
+                const fileList = await fetchFileList(folder);
+                if (fileList.length === 0) {
+                    fileSelect.innerHTML = '<option>No files found</option>';
+                    return;
+                }
+
+                // Populate file dropdown
+                fileSelect.innerHTML = '';
+                fileList.forEach(file => {
+                    const fileName = file.replace('.json', ''); // Remove .json extension
+                    const option = document.createElement('option');
+                    option.value = file;
+                    option.textContent = fileName;
+                    fileSelect.appendChild(option);
+                });
+
+                // Trigger fetching content for the first file if available
+                if (fileList.length > 0) {
+                    fileSelect.value = fileList[0];
+                    fetchFileContent();
+                }
+            } catch (error) {
+                console.error(`Failed to load files from folder ${folder}:`, error);
+                fileSelect.innerHTML = '<option>Error loading files</option>';
+            }
+        }
+
+        async function fetchFileList(folder) {
+            try {
+                const response = await fetch(`${folder}/fileList.json`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch fileList.json from folder ${folder}: ${response.statusText}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error(`Failed to fetch file list from folder ${folder}:`, error);
+                return [];
+            }
+        }
+
+        async function fetchFileContent() {
+            const folder = document.getElementById('folderSelect').value;
+            const file = document.getElementById('fileSelect').value;
+
+            try {
+                if (!file) {
+                    document.getElementById('content').innerHTML = 'Please select a file.';
+                    return;
+                }
+
+                const fileResponse = await fetch(`${folder}/${file}`);
+                if (!fileResponse.ok) {
+                    throw new Error(`Failed to fetch ${file} from folder ${folder}: ${fileResponse.statusText}`);
+                }
+                const jsonData = await fileResponse.json();
+
+                // Display the JSON content and file info with both "text" and "note" having their own IDs
+                document.getElementById('content').innerHTML = `
+                <span id="text"> ${jsonData.text || 'No text available'}</span><br><br>
+                <span id="note"><strong>Note:</strong> ${jsonData.note || 'No note available'}</span>`;
+
+
+                //document.getElementById('info').innerHTML = `
+                //    <strong>Folder:</strong> ${folder}<br>
+                //    <strong>File:</strong> ${file}
+                //`;
+            } catch (error) {
+                document.getElementById('content').innerText = `Error: ${error.message}`;
+                document.getElementById('info').innerText = '';
+            }
+        }
+
+        async function fetchRandomFile(maxLength = Infinity) {
+            // Choose a random folder
+            const randomFolder = folders[Math.floor(Math.random() * folders.length)];
+            const folderSelect = document.getElementById('folderSelect');
+            folderSelect.value = randomFolder;
+            await loadFileList(); // Load files for the selected folder
+
+            const fileSelect = document.getElementById('fileSelect');
+            const fileList = Array.from(fileSelect.options).map(option => option.value);
+
+            if (fileList.length === 0) {
+                document.getElementById('content').innerHTML = 'No files available in the selected folder.';
+                return;
+            }
+
+            // Filter files based on the maximum text length
+            let validFiles = [];
+            for (const file of fileList) {
+                try {
+                    const fileResponse = await fetch(`${randomFolder}/${file}`);
+                    if (!fileResponse.ok) continue;
+
+                    const jsonData = await fileResponse.json();
+                    if (jsonData.text && jsonData.text.length <= maxLength) {
+                        validFiles.push(file);
+                    }
+                } catch (error) {
+                    console.error(`Failed to fetch content of ${file}:`, error);
+                }
+            }
+
+            if (validFiles.length === 0) {
+                document.getElementById('content').innerHTML = `No files with text length <= ${maxLength} characters found.`;
+                return;
+            }
+
+            // Choose a random file from the filtered list
+            const randomFile = validFiles[Math.floor(Math.random() * validFiles.length)];
+            fileSelect.value = randomFile;
+            fetchFileContent(); // Fetch and display content for the selected random file
+        }
+
+        // Initialize the dropdowns on page load
+        window.onload = populateFolderDropdown;
+    </script>
+</body>
+</html>
